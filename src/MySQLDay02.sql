@@ -191,6 +191,8 @@ select truncate(1.65,1);
 select mod(10,3);
 select 10%3;
 
+-- 6.rand:获取随机数，返回0-1之间的小数
+
 -- 三，日期函数
 -- 1.now返回当前系统日期+时间
 select now();
@@ -244,6 +246,8 @@ select version();
 select database();
 -- 查询当前登录的用户
 select user();
+-- password('字符'):返回该字符的密码形式
+-- md5('字符')：返回该字符的md5加密的形式
 
 -- 五，流程控制函数
 -- 1.if函数：类似if else的效果
@@ -716,4 +720,55 @@ select employee_id,job_id,last_name from employees order by department_id desc ,
 
 -- 3.查询员工表的job_id中包含a 和e 的，并且a在e的前面
 select job_id from employees where job_id like '%a%e%';
+
+---------------------------作业--------------------------------------
+-- 1.显示所有的员工的姓名，部门号和部门名称。
+select last_name,d.department_id,department_name
+from employees e ,departments d
+where e.department_id = d.department_id;
+
+-- 2.查询90号部门员工的job_id和90号的部门的location_id
+select job_id,location_id
+from employees e ,departments d
+where e.department_id = d.department_id
+and d.department_id = 90;
+
+-- 3.选择所有有奖金的员工的 last_name,department_name,location_id,city
+select last_name,department_name,l.location_id,city
+from employees e , departments d, locations l
+where e.department_id = d.department_id
+and d.location_id = l.location_id
+and e.commission_pct is not null ;
+
+-- 4.选择city在Toronto工作的员工的last_name,job_id,department_id,department_name
+select last_name,job_id,d.department_id,department_name
+from employees e ,departments d,locations l
+where e.department_id = d.department_id
+and d.location_id = l.location_id
+and city = 'Toronto';
+
+-- 5.查询每个工种，每个部门的部门名，工种名和最低工资
+select department_name,job_title,min(salary) 最低工资
+from employees e ,departments d ,jobs j
+where e.department_id = d.department_id
+and e.job_id = j.job_id
+group by department_name,job_title;
+
+-- 6.查询每个国家下的部门个数大于2的国家编号
+select country_id,count(*) 部门个数
+from locations l , departments d
+where l.location_id = d.location_id
+group by country_id
+having count(*) > 2;
+
+
+--7.选择指定员工的姓名，员工名，以及他的管理者的姓名和员工号，结果类似于下面的格式
+-- employee      Emp#    manager   Mgr#
+-- kochhar       101      king     100
+select e.last_name employee,e.employee_id "#Emp" ,m.last_name manager,m.employee_id "Mgr#"
+from employees e , employees m
+where e.manager_id = m.employee_id
+and e.last_name = 'kochhar';
+
+
 
