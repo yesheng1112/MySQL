@@ -658,17 +658,3 @@ select * from tab_date;
 
 show variables like 'time_zone';
 set time_zone = '+9:00';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
