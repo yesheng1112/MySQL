@@ -515,14 +515,10 @@ where employee_id in (
   where manager_id is not null
 );
 
+-- 拓展：级联删除,添加级联删除的外键，主表中的数据删除从表中的数据也会删除
+alter table stuinfo add constraint fk_stu_major foreign key
+(majorId) references major(id) on delete cascade ;
 
-
-
-
-
-
-
-
-
-
-
+-- 级联置空,删除主表中数据，从表中数据会置空
+alter table stuinfo add constraint fk_stu_major foreign key
+(majorId) references major(id) on delete set null;
