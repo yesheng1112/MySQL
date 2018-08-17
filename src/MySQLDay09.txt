@@ -1,0 +1,327 @@
+三.查询截取分析:
+    1.慢查询日志:
+        1)是什么:
+            MySQL提供的一种日志记录，它用来记录在MySQL中响应时间超过阀值的语句，
+            具体指运行时间超过long_query_time值的SQL，则会被记录到慢查询日志中。
+        2)怎么玩:
+            ①说明:
+                默认情况下，MySQL数据库没有开启慢查询日志，需要我们手动来设置这个参数。
+                当然，如果不是调优需要的话，一般不建议启动该参数，
+                因为开启慢查询日志会或多或少带来一定的性能影响。慢查询日志支持将日志记录写入文件
+            ②查看是否及如何开启:
+                默认:
+                    默认情况下slow_query_log的值为OFF，表示慢查询日志是禁用的，
+                    可以通过设置slow_query_log的值来开启
+                    SHOW VARIABLES LIKE '%slow_query_log%';
+                开启:
+                    使用set global slow_query_log=1开启了慢查询日志只对当前数据库生效，
+                    注意:如果MySQL重启后则会失效。
+
+                    如果要永久生效，就必须修改配置文件my.cnf（其它系统变量也是如此）
+                    修改my.cnf文件，[mysqld]下增加或修改参数
+                    slow_query_log 和slow_query_log_file后，然后重启MySQL服务器。
+                    如下两行配置进my.cnf文件:
+                        slow_query_log =1
+                        slow_query_log_file=/var/lib/mysql/atguigu-slow.log
+                    关于慢查询的参数slow_query_log_file ，它指定慢查询日志文件的存放路径，
+                    系统默认会给一个缺省的文件host_name-slow.log（如果没有指定参数slow_query_log_file的话）
+            ③开启慢查询日志后，什么样的sql会记录下来:
+                这个是由参数long_query_time控制，默认情况下long_query_time的值为10秒，
+                    命令：SHOW VARIABLES LIKE 'long_query_time%';
+                可以使用命令修改，也可以在my.cnf参数里面修改。
+                假如运行时间正好等于long_query_time的情况，并不会被记录下来。也就是说，
+                在mysql源码里是判断大于long_query_time，而非大于等于。
+            ④case:
+                查看当前多少秒算慢
+                	SHOW VARIABLES LIKE 'long_query_time%';
+                设置慢的阙值时间
+                	set  long_query_time=1
+                记录慢SQL并后续分析
+                    tail -20f 要实时抓取的文件名(ys-slow.log)
+                查询当前系统中有多少条慢查询记录
+        3)日志分析工具mysqldumpslow:
+            ①查看mysqldumpslow的帮助信息:
+                -s: 是表示按照何种方式排序；
+                c: 访问次数
+                l: 锁定时间
+                r: 返回记录
+                t: 查询时间
+                al:平均锁定时间
+                ar:平均返回记录数
+                at:平均查询时间
+                -t:即为返回前面多少条的数据；
+                -g:后边搭配一个正则匹配模式，大小写不敏感的；
+            ②工作常用参考:
+                得到返回记录集最多的10个SQL
+                    mysqldumpslow -s r -t 10 /var/lib/mysql/atguigu-slow.log
+                 
+                得到访问次数最多的10个SQL
+                    mysqldumpslow -s c -t 10 /var/lib/mysql/atguigu-slow.log
+                 
+                得到按照时间排序的前10条里面含有左连接的查询语句
+                    mysqldumpslow -s t -t 10 -g "left join" /var/lib/mysql/atguigu-slow.log
+                 
+                另外建议在使用这些命令时结合 | 和more 使用 ，否则有可能出现爆屏情况
+                    mysqldumpslow -s r -t 10 /var/lib/mysql/atguigu-slow.log | more
+
+    2.全局查询日志:
+        1)配置启用:
+            在mysql的my.cnf中，设置如下：
+                #开启
+                general_log=1   
+                # 记录日志文件的路径
+                general_log_file=/path/logfile
+                #输出格式
+                log_output=FILE
+        2)编码启用:
+            命令:
+                set global general_log=1;
+            #全局日志可以存放到日志文件中，也可以存放到Mysql系统表中。存放到日志中性能更好一些，存储到表中
+                set global log_output='TABLE';
+            此后 ，你所编写的sql语句，将会记录到mysql库里的general_log表，可以用下面的命令查看
+                select * from mysql.general_log;
+        注意:尽量不要再生产环境开启这个功能。
+    3.show processlist:
+        1)能干什么:
+            查询所有用户正在干什么
+            如果出现不顺眼的
+            kill [id]
+四.MySql锁机制:
+    1.概述:
+        1)定义:
+            计算机协调多个进程或线程并发访问某一资源的机制。
+        2)锁的分类:
+            ①从对数据操作的类型（读\写）分:
+                读锁(共享锁)：针对同一份数据，多个读操作可以同时进行而不会互相影响。
+                写锁（排它锁）：当前写操作没有完成前，它会阻断其他写锁和读锁。
+            ②从对数据操作的粒度分(粒度:锁的大小或面积):
+               表锁
+               行锁
+    2.两锁:
+        1)表锁：
+            ①特点:
+                偏向MyISAM存储引擎，开销小，加锁快；无死锁；锁定粒度大，发生锁冲突的概率最高,并发度最低。
+            ②案例分析:
+                【表级锁分析--建表SQL】
+                    create table mylock(
+                     id int not null primary key auto_increment,
+                     name varchar(20)
+                    )engine myisam;
+
+                    insert into mylock(name) values('a');
+                    insert into mylock(name) values('b');
+                    insert into mylock(name) values('c');
+                    insert into mylock(name) values('d');
+                    insert into mylock(name) values('e');
+
+                    select * from mylock;
+                    【手动增加表锁】
+                        lock table 表名字1 read(write)，表名字2 read(write)，其它;
+                    【查看表上加过的锁】
+                        show open tables;
+                    【释放表锁】
+                        unlock tables;
+            ③结论:
+                MyISAM在执行查询语句（SELECT）前，会自动给涉及的所有表加读锁，在执行增删改操作前，会自动给涉及的表加写锁。
+                MySQL的表级锁有两种模式：
+                    表共享读锁（Table Read Lock）
+                    表独占写锁（Table Write Lock）
+                锁类型	自己可读	自己可写	自己可操作其他表	他人可读	他人可写
+                读锁	      是	      否	        否	          是	     否，等
+                写锁	      是	      是	        否	        否，等	 否，等
+
+                结合上表，所以对MyISAM表进行操作，会有以下情况：
+                    (1)对MyISAM表的读操作（加读锁），不会阻塞其他进程对同一表的读请求，
+                       但会阻塞对同一表的写请求。只有当读锁释放后，才会执行其它进程的写操作。
+                    (2)对MyISAM表的写操作（加写锁），会阻塞其他进程对同一表的读和写操作，
+                       只有当写锁释放后，才会执行其它进程的读写操作。
+                简而言之，就是读锁会阻塞写，但是不会堵塞读。而写锁则会把读和写都堵塞
+        2)行锁:
+            ①特点:
+                偏向InnoDB存储引擎，开销大，加锁慢；会出现死锁；锁定粒度最小，发生锁冲突的概率最低,并发度也最高。
+                InnoDB与MyISAM的最大不同有两点：
+                    一是支持事务（TRANSACTION）；
+                    二是采用了行级锁
+            ②事务:
+                事务（Transaction）及其ACID属性:
+                    并发事务处理带来的问题:
+                        脏读(Dirty Reads)
+                        不可重复读(Non-Repeatable Reads)
+                        幻读(Phantom Reads)
+                事务隔离级别:
+                    Read uncommitted
+                    Read committed
+                    Repeatable read
+                    Serializable
+            ③案例分析:
+                Select也可以加锁:
+                    读锁:
+                        select ..lock in share mode
+                    写锁:
+                        select... for update
+                无索引行锁升级为表锁
+                间隙锁危害:
+                    间隙锁带来的插入问题
+                        Session_1	Session_2
+	                阻塞产生，暂时不能插入
+                        commit;	阻塞解除，完成插入
+                【什么是间隙锁】
+                    当我们用范围条件而不是相等条件检索数据，并请求共享或排他锁时，InnoDB会给符合条件的已有数据记录的索引项加锁；
+                    对于键值在条件范围内但并不存在的记录，叫做“间隙（GAP)”，
+                    InnoDB也会对这个“间隙”加锁，这种锁机制就是所谓的间隙锁（GAP Lock）。
+                【危害】
+                    因为Query执行过程中通过过范围查找的话，他会锁定整个范围内所有的索引键值，即使这个键值并不存在。
+                    间隙锁有一个比较致命的弱点，就是当锁定一个范围键值之后，即使某些不存在的键值也会被无辜的锁定，
+                    而造成在锁定的时候无法插入锁定键值范围内的任何数据。在某些场景下这可能会对性能造成很大的危害。
+            ④行锁分析:
+                show status like 'innodb_row_lock%';
+                对各个状态量的说明如下：
+                    Innodb_row_lock_current_waits：当前正在等待锁定的数量；
+                    Innodb_row_lock_time：从系统启动到现在锁定总时间长度；
+                    Innodb_row_lock_time_avg：每次等待所花平均时间；
+                    Innodb_row_lock_time_max：从系统启动到现在等待最常的一次所花的时间；
+                    Innodb_row_lock_waits：系统启动后到现在总共等待的次数；
+                对于这5个状态变量，比较重要的主要是:
+                    Innodb_row_lock_time_avg（等待平均时长），
+                    Innodb_row_lock_waits（等待总次数）
+                    Innodb_row_lock_time（等待总时长）这三项。
+                尤其是当等待次数很高，而且每次等待时长也不小的时候，我们就需要分析系统中为什么会有如此多的等待，然后根据分析结果着手指定优化计划。
+                最后可以通过
+                    SELECT * FROM information_schema.INNODB_TRX\G;
+                来查询正在被锁阻塞的sql语句。
+            ⑤优化建议:
+                不要三心二意，锁住哪行，就改哪行。
+                要说话算数，说读锁就干读的事，说写锁就干写的事。
+                不要拖拖拉拉，用了锁，就赶紧办事，办完事赶紧提交。
+                如果锁，请轻锁，一锁一大片，中间再也无法容纳他人了。（间隙锁的问题）
+                无索引，不行锁。（行锁的前提是过滤条件利用上了索引）。
+                用情越深，付出越大。（隔离级别越高，锁成本越高）。
+            注意:
+                如果程序异常退出了导致锁没有释放的情况,我们要把该锁给释放掉。
+                先查询表:
+                    SELECT * FROM innodb_trx;
+                然后杀死进程:
+                    kill [trx_mysql_thread_id];
+五.工具和技巧拾遗
+    1.视图(View):
+        1)是什么:
+            将一段查询sql封装为一个虚拟的表。
+            这个虚拟表只保存了sql逻辑，不会保存任何查询结果。
+        2)作用:
+            ①封装复杂sql语句，提高复用性。
+            ②逻辑放在数据库上面，更新不需要发布程序，面对频繁的需求变更更灵活。
+        3)适用场景:
+            ①很多地方可以共用的一组查询结果。
+            ②报表。
+        4)语法:
+            ①创建:
+               CREATE VIEW view_name
+               AS
+               SELECT column_name(s)
+               FROM table_name
+               WHERE condition;
+            ②使用:
+               select * from view_name;
+        5)注意事项:
+            mysql的视图中不允许有from 后面的子查询，但oracle可以
+    2.触发器(Trigger):
+        1)定义:
+            根据某张表发生的事件比如：insert,update,delete，来触发执行某些处理
+        2)适用场景:
+            冗余数据的同步。
+        3)语法:
+            DELIMITER $$
+            CREATE   TRIGGER   tr_afterupdate_t_dept
+            AFTER UPDATE ON t_dept
+            FOR EACH ROW
+                BEGIN
+                UPDATE  t_emp a
+                LEFT JOIN  t_dept b ON a.`deptId` = b.`id`
+                LEFT JOIN  t_emp c ON b.`CEO` = c.`id`
+                SET a.`ceo_name`=c.name
+                WHERE b.id=new.id;  #new 或old 指向当前正在更新的行
+              END $$
+            DELIMITER ;
+        4)注意事项:
+            ①trigger触发器虽然方便但是非常不利于维护
+            ②影响数据库性能
+            ③这种非程序触发的写操作很难被日志追踪
+            ④触发了某事件的表，不能利用触发器对自己做操作
+    3.事件(event):
+        1)作用:
+           用来做定时任务。
+        2)语法:
+            ①开启定时事件的开关:
+                SHOW  VARIABLES  LIKE '%event_scheduler%'
+                SET GLOBAL event_scheduler =1;
+            ②使用:
+                CREATE
+                    [DEFINER = { user | CURRENT_USER }]
+                    EVENT
+                    [IF NOT EXISTS]
+                    event_name
+                    ON SCHEDULE schedule
+                    [ON COMPLETION [NOT] PRESERVE]
+                    [ENABLE | DISABLE | DISABLE ON SLAVE]
+                    [COMMENT 'comment']
+                    DO event_body;
+
+                schedule:
+                    AT timestamp [+ INTERVAL interval] ...
+                  | EVERY interval
+                    [STARTS timestamp [+ INTERVAL interval] ...]
+                    [ENDS timestamp [+ INTERVAL interval] ...]
+
+                interval:
+                    quantity {YEAR | QUARTER | MONTH | DAY | HOUR | MINUTE |
+                              WEEK | SECOND | YEAR_MONTH | DAY_HOUR | DAY_MINUTE |
+                              DAY_SECOND | HOUR_MINUTE | HOUR_SECOND | MINUTE_SECOND}
+    4.定时备份数据库:
+        1)需求:
+            每日凌晨2点备份mydb数据库脚本。并以年月为目录，以年月日为文件名，放到/backup/mysql下
+        2)备份:
+            ①导出语句:
+                mysqldump命令
+                    导出 sql文件
+                    格式：
+                        mysqldump -u[用户名] -p[密码] [要导出的数据库]>[导出的文件.sql]
+                    例如：
+                        mysqldump -uroot -p123123 mydb>/backup/mysql/mydb_2017050X.sql
+            ②shell脚本:
+                #! /bin/sh
+                DIR=/backup/mysql/`date +%Y%m`
+                DATABASE=mydb
+                if [ ! -d $DIR ]
+                then
+                   mkdir -p $DIR
+                else
+                   echo "already has dir"
+                fi
+                echo "start to backup"
+                mysqldump -uroot -p123456 $DATABASE>$DIR'/'$DATABASE`date +%Y%m%d`'.sql'
+                echo $DIR'/'$DATABASE`date +%Y%m%d`'.sql'
+        3)定时任务:
+            ①crond和crontab:
+                crond是linux定时任务服务。
+                    通过service crond start/stop来控制服务的启动关闭。
+                    crond是每分钟检查一次事件是否触发。所以linux定时任务最小的执行频率是1分钟。
+                crontab 是设定、管理定时任务的命令行工具。
+                    通过crontab -e 来定制定时任务
+                    基本格式 :
+                        30　　2　　1　　12　　*　　command
+                        30　　2　　*　　*　　 *　　command
+                        分　  时　 日　 月　  周　 命令
+                        第1列表示分钟1～59 每分钟用*或者 */1表示
+                        第2列表示小时1～23（0表示0点）
+                        第3列表示日期1～31
+                        第4列表示月份1～12
+                        第5列标识号星期0～6（0表示星期天）
+                        第6列要运行的命令
+                crontab文件的一些例子：
+                    30 21 * * *  service mysql restart
+                    上面的含义是:
+                        每天21点30分执行重启mysql
+                    定时执行脚本就是:
+                        0 2 * * * sh /backup/mysql/backup.sh
+
+
